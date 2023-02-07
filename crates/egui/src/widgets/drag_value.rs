@@ -63,6 +63,7 @@ pub struct DragValue<'a> {
     max_decimals: Option<usize>,
     custom_formatter: Option<NumFormatter<'a>>,
     custom_parser: Option<NumParser<'a>>,
+    live_typing_update: bool,
 }
 
 impl<'a> DragValue<'a> {
@@ -94,6 +95,7 @@ impl<'a> DragValue<'a> {
             max_decimals: None,
             custom_formatter: None,
             custom_parser: None,
+            live_typing_update: true,
         }
     }
 
@@ -352,10 +354,15 @@ impl<'a> DragValue<'a> {
         }
         .custom_parser(|s| i64::from_str_radix(s, 16).map(|n| n as f64).ok())
     }
+
+    pub fn live_typing_update(mut self, live_typing_update: bool) -> Self {
+        self.live_typing_update = live_typing_update;
+        self
+    }
 }
 
 impl<'a> Widget for DragValue<'a> {
-    fn ui(self, ui: &mut Ui) -> Response {
+    fn ui(mut self, ui: &mut Ui) -> Response {
         let Self {
             mut get_set_value,
             speed,
@@ -366,6 +373,7 @@ impl<'a> Widget for DragValue<'a> {
             max_decimals,
             custom_formatter,
             custom_parser,
+            live_typing_update,
         } = self;
 
         let shift = ui.input(|i| i.modifiers.shift_only());
@@ -408,8 +416,10 @@ impl<'a> Widget for DragValue<'a> {
                 // assume this behavior, so having a separate mode for incrementing
                 // and decrementing, that supports all arrow keys, would be
                 // problematic.
-                change += input.count_and_consume_key(Modifiers::NONE, Key::ArrowUp) as f64
-                    - input.count_and_consume_key(Modifiers::NONE, Key::ArrowDown) as f64;
+                if live_typing_update {
+                    change += input.count_and_consume_key(Modifiers::NONE, Key::ArrowUp) as f64
+                        - input.count_and_consume_key(Modifiers::NONE, Key::ArrowDown) as f64;
+                }
             }
 
             #[cfg(feature = "accesskit")]
@@ -481,7 +491,9 @@ impl<'a> Widget for DragValue<'a> {
             };
             if let Some(parsed_value) = parsed_value {
                 let parsed_value = clamp_to_range(parsed_value, clamp_range.clone());
-                set(&mut get_set_value, parsed_value);
+                if live_typing_update || response.lost_focus() {
+                    set(&mut get_set_value, parsed_value);
+                }
             }
             ui.memory_mut(|mem| mem.drag_value.edit_string = Some(value_text));
             response
